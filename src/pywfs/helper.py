@@ -40,5 +40,5 @@ logging.basicConfig(format=format)
 
 
 log = logging.getLogger("Simtools")
-log.setLevel(logging.DEBUG)
+log.setLevel(logging.SPAM)
 
