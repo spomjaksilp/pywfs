@@ -2,10 +2,13 @@
 
 """
 
-from ctypes import c_uint8, c_int16, c_int32, c_double, c_ulong, c_float, c_bool, c_char_p, create_string_buffer, byref, POINTER
+from ctypes import c_uint8, c_int16, c_int32, c_double, c_ulong, c_float, c_bool, c_char, c_char_p, create_string_buffer, byref, POINTER
 import numpy as np
 
-from .helper import log
+try:
+    from .helper import log
+except:
+    from helper import log
 
 
 # defining names according to the manual
@@ -17,11 +20,14 @@ ViInt16 = c_int16
 ViInt32 = c_int32
 ViReal32 = c_float
 ViReal64 = c_double
-ViChar256 = lambda: create_string_buffer("", 256)
-ViChar512 = lambda: create_string_buffer("", 512)
+ViChar256 = c_char * 256
+ViChar512 = c_char * 512
+# ViChar256 = lambda: create_string_buffer("", 256)
+# ViChar512 = lambda: create_string_buffer("", 512)
 ViRsrc = ViChar256
 
-VI_NULL = lambda: None
+# VI_NULL = lambda: None
+VI_NULL = lambda: c_ulong()
 
 
 class WFSError(Exception):
@@ -87,8 +93,8 @@ class WFSLib(object):
         dll.WFS_GetTriggerMode.restype = ViStatus
         dll.WFS_GetTriggerMode.argtypes = [ViSession, POINTER(ViInt32)]
 
-        dll.WFS_SetTriggerDelayRange.restype = ViStatus
-        dll.WFS_SetTriggerDelayRange.argtypes = [ViSession, POINTER(ViInt32), POINTER(ViInt32), POINTER(ViInt32)]
+        # dll.WFS_SetTriggerDelayRange.restype = ViStatus
+        # dll.WFS_SetTriggerDelayRange.argtypes = [ViSession, POINTER(ViInt32), POINTER(ViInt32), POINTER(ViInt32)]
 
         dll.WFS_GetMlaCount.restype = ViStatus
         dll.WFS_GetMlaCount.argtypes = [ViSession, POINTER(ViInt32)]
@@ -97,7 +103,7 @@ class WFSLib(object):
         dll.WFS_GetMlaData.argtypes = [ViSession, ViInt32, ViChar256, POINTER(ViReal64), POINTER(ViReal64), POINTER(ViReal64), POINTER(ViReal64), POINTER(ViReal64), POINTER(ViReal64), POINTER(ViReal64)]
         
         dll.WFS_GetMlaData2.restype = ViStatus
-        dll.WFS_GetMlaData2.argtypes = [ViSession, ViInt32, ViChar256, POINTER(ViReal64), POINTER(ViReal64), POINTER(ViReal64), POINTER(ViReal64), POINTER(ViReal64), POINTER(ViReal64), POINTER(ViReal64, POINTER(ViReal64), POINTER(ViReal64))]
+        dll.WFS_GetMlaData2.argtypes = [ViSession, ViInt32, ViChar256, POINTER(ViReal64), POINTER(ViReal64), POINTER(ViReal64), POINTER(ViReal64), POINTER(ViReal64), POINTER(ViReal64), POINTER(ViReal64), POINTER(ViReal64), POINTER(ViReal64)]
 
         dll.WFS_SelectMla.restype = ViStatus
         dll.WFS_SelectMla.argtypes = [ViSession, ViInt32]
@@ -215,7 +221,7 @@ class WFSLib(object):
         dll.WFS_GetInstrumentListLen.argtypes = [ViSession, POINTER(ViInt32)]
 
         dll.WFS_GetInstrumentListInfo.restype = ViStatus
-        dll.WFS_GetInstrumentListInfo.argtypes = [ViSession, ViInt32, POINTER(ViInt32), POINTER(ViInt32), ViChar256, ViChar256, c_char_p] # ViChar[]
+        dll.WFS_GetInstrumentListInfo.argtypes = [ViSession, ViInt32, POINTER(ViInt32), POINTER(ViInt32), ViChar256, ViChar256, ViRsrc] # ViChar[]
 
         dll.WFS_GetXYScale.restype = ViStatus
         dll.WFS_GetXYScale.argtypes = [ViSession, c_float, c_float] # float[]
@@ -254,8 +260,8 @@ class WFSLib(object):
          This function queries the instrument and returns instrument-specific error information. 
         """
         if dev_status != 0:
-            log.debug(f"ViStatus code {dev_status} occured")
-            raise WFSError(dev_status)
+            log.error(f"ViStatus code {dev_status} occured")
+            # raise WFSError(dev_status)
 
 
     def device_count(self):
@@ -272,8 +278,8 @@ class WFSLib(object):
         """
         This function returns information about connected WFS instruments. 
         """
-        count = WFSLib.result(self.device_count())
-        log.spam(f"WFS_GetInstrumentListLen: {count.value} connected sensors")
+        count = self.device_count()
+        log.spam(f"WFS_GetInstrumentListLen: {count} connected sensors")
         sensors = []
         for list_index in range(count):
             device_id = ViInt32()
@@ -406,12 +412,13 @@ class WFSSensor(object):
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
     import ctypes as ct
+    import sys
     dll = ct.windll.WFS_32
 
     # list devices
     lib = WFSLib(dll)
     print(lib.device_info())
-
+    sys.exit()
     # get handle
     sensor = lib.open(list_index=0)
 
