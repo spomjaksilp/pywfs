@@ -196,7 +196,7 @@ class WFSLib(object):
         dll.WFS_CalcReconstrDeviations.argtypes = [ViSession, ViInt32, ViInt32, ViInt32, POINTER(ViReal64), POINTER(ViReal64)] # ViInt32[]
 
         dll.WFS_CalcWavefront.restype = ViStatus
-        dll.WFS_CalcWavefront.argtypes = [ViSession, ViInt32, ViInt32, c_float] # float[]
+        # dll.WFS_CalcWavefront.argtypes = [ViSession, ViInt32, ViInt32, c_float] # float[]
 
         dll.WFS_CalcWavefrontStatistics.restype = ViStatus
         dll.WFS_CalcWavefrontStatistics.argtypes = [ViSession, POINTER(ViReal64), POINTER(ViReal64), POINTER(ViReal64), POINTER(ViReal64), POINTER(ViReal64), POINTER(ViReal64)]
@@ -279,7 +279,6 @@ class WFSLib(object):
         This function returns information about connected WFS instruments. 
         """
         count = self.device_count()
-        log.spam(f"WFS_GetInstrumentListLen: {count} connected sensors")
         sensors = []
         for list_index in range(count):
             device_id = ViInt32()
@@ -324,7 +323,7 @@ class WFSLib(object):
         This function closes the instrument driver session.
         Note: The instrument must be reinitialized to use it again. 
         """
-        log.spam(f"closing instrument with handle {handle}")
+        log.spam(f"closing instrument with handle {handle.value}")
         WFSLib.result(self._dll.WFS_close(handle))
 
 
@@ -405,7 +404,8 @@ class WFSSensor(object):
         array_wavefront = np.zeros(max_spots, dtype = np.float32)
         log.spam(f"calculating wavefront type {self.wavefront_type.value}")
         WFSLib.result(self._dll.WFS_CalcWavefront(self._handle, self.wavefront_type, self.limit_to_pupil, array_wavefront.ctypes.data))
-        return array_wavefront.copy()
+        return array_wavefront[:self.spots[1].value, :self.spots[0].value].copy()
+        # return array_wavefront.copy()
 
 
 # some example code to acquire one wavefront and close the instrument
@@ -418,7 +418,7 @@ if __name__ == "__main__":
     # list devices
     lib = WFSLib(dll)
     print(lib.device_info())
-    sys.exit()
+    # sys.exit()
     # get handle
     sensor = lib.open(list_index=0)
 
@@ -430,7 +430,12 @@ if __name__ == "__main__":
     sensor.take_spot_field_image_auto_expos()
     sensor.calc_spot()
     sensor.calc_deviations()
-    result = sensor.calc_wavefront(limit_to_pupil=False)
-
-    plt.matshow(result)
-    plt.show
+    try:
+        result = sensor.calc_wavefront(limit_to_pupil=False, max_spots=[100, 100])
+        print(result)
+        plt.imshow(result)
+        plt.show()
+    except Exception as e:
+        log.critical(f"{e}")
+    finally:
+        WFSLib(dll).close(sensor._handle)
