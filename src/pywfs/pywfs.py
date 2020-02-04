@@ -13,23 +13,23 @@ except:
 
 # WFS status bits
 WFS_STATUS = {
-    "CON" : b"0x00000001",  # USB connection lost, set by driver
-    "PTH" : b"0x00000002",  # Power too high (cam saturated)
-    "PTL" : b"0x00000004",  # Power too low (low cam digits)
-    "HAL" : b"0x00000008",  # High ambient light
-    "SCL" : b"0x00000010",  # Spot contrast too low
-    "ZFL" : b"0x00000020",  # Zernike fit failed because of not enough detected spots
-    "ZFH" : b"0x00000040",  # Zernike fit failed because of too much detected spots
-    "ATR" : b"0x00000080",  # Camera is still awaiting a trigger
-    "CFG" : b"0x00000100",  # Camera is configured, ready to use
-    "PUD" : b"0x00000200",  # Pupil is defined
-    "SPC" : b"0x00000400",  # No. of spots or pupil or aoi has been changed
-    "RDA" : b"0x00000800",  # Reconstructed spot deviations available
-    "URF" : b"0x00001000",  # User reference data available
-    "HSP" : b"0x00002000",  # Camera is in Highspeed Mode
-    "MIS" : b"0x00004000",  # Mismatched centroids in Highspeed Mode
-    "LOS" : b"0x00008000",  # low number of detected spots, warning: reduced Zernike accuracy
-    "FIL" : b"0x00010000"  # pupil is badly filled with spots, warning: reduced Zernike accuracy
+    "CON" : 0x00000001,  # USB connection lost, set by driver
+    "PTH" : 0x00000002,  # Power too high (cam saturated)
+    "PTL" : 0x00000004,  # Power too low (low cam digits)
+    "HAL" : 0x00000008,  # High ambient light
+    "SCL" : 0x00000010,  # Spot contrast too low
+    "ZFL" : 0x00000020,  # Zernike fit failed because of not enough detected spots
+    "ZFH" : 0x00000040,  # Zernike fit failed because of too much detected spots
+    "ATR" : 0x00000080,  # Camera is still awaiting a trigger
+    "CFG" : 0x00000100,  # Camera is configured, ready to use
+    "PUD" : 0x00000200,  # Pupil is defined
+    "SPC" : 0x00000400,  # No. of spots or pupil or aoi has been changed
+    "RDA" : 0x00000800,  # Reconstructed spot deviations available
+    "URF" : 0x00001000,  # User reference data available
+    "HSP" : 0x00002000,  # Camera is in Highspeed Mode
+    "MIS" : 0x00004000,  # Mismatched centroids in Highspeed Mode
+    "LOS" : 0x00008000,  # low number of detected spots, warning: reduced Zernike accuracy
+    "FIL" : 0x00010000  # pupil is badly filled with spots, warning: reduced Zernike accuracy
 }
 
 
@@ -55,11 +55,17 @@ ArrFloat = np.ctypeslib.ndpointer(shape=MAX_SPOTS[::-1])  # note the Y, X order
 VI_NULL = lambda: c_ulong()
 
 
-class WFSError(Exception):
+def to_int(hexvar):
+    """
+    This function returns hex thing like  b"0x00000400" to integers
+    """
+    return int(hexvar, 0)
+
+class WfsError(Exception):
     pass
 
 
-class WFSLib(object):
+class WfsLib(object):
     """
     This class provides a Python wrapper for the bare C functions
     """
@@ -286,8 +292,7 @@ class WFSLib(object):
         """
         if dev_status != 0:
             log.error(f"ViStatus code {dev_status} occured")
-            # raise WFSError(dev_status)
-
+            raise WfsError(dev_status)
 
     def device_count(self):
         """
@@ -295,7 +300,7 @@ class WFSLib(object):
         Use function GetInstrumentListInfo to retrieve information about each WFS instrument.
         """
         count = ViInt32()
-        WFSLib.result(self._dll.WFS_GetInstrumentListLen(VI_NULL(), byref(count)))
+        WfsLib.result(self._dll.WFS_GetInstrumentListLen(VI_NULL(), byref(count)))
         log.spam(f"WFS_GetInstrumentListLen: {count.value} connected sensors")
         return count.value
 
@@ -311,7 +316,7 @@ class WFSLib(object):
             instrument_name = ViChar256()
             instrument_sn = ViChar256()
             resource_name = ViRsrc()
-            WFSLib.result(self._dll.WFS_GetInstrumentListInfo(VI_NULL(), list_index, byref(device_id), byref(in_use), instrument_name, instrument_sn, resource_name))
+            WfsLib.result(self._dll.WFS_GetInstrumentListInfo(VI_NULL(), list_index, byref(device_id), byref(in_use), instrument_name, instrument_sn, resource_name))
             log.info(f"WFS device_id: {device_id.value}")
             log.info(f"in use: {in_use.value}")
             log.info(f"instrument_name: {instrument_name.value}")
@@ -337,11 +342,11 @@ class WFSLib(object):
         # check if device is already in use
         instrument = self.device_info()[list_index]
         if instrument[1] != 0:
-            raise WFSError(f"device is already in use!")
+            raise WfsError(f"device is already in use!")
         resource_name.value = instrument[-1]
-        WFSLib.result(self._dll.WFS_init(resource_name, id_query, reset_device, byref(handle)))
+        WfsLib.result(self._dll.WFS_init(resource_name, id_query, reset_device, byref(handle)))
         log.spam(f"sensor initialized with handle {handle.value}")
-        return WFSSensor(handle, self._dll)
+        return WfsSDK(handle, self._dll)
 
     def close(self, handle: ViSession):
         """
@@ -349,10 +354,10 @@ class WFSLib(object):
         Note: The instrument must be reinitialized to use it again. 
         """
         log.spam(f"closing instrument with handle {handle.value}")
-        WFSLib.result(self._dll.WFS_close(handle))
+        WfsLib.result(self._dll.WFS_close(handle))
 
 
-class WFSSensor(object):
+class WfsSDK(object):
     """
     This class is a python wrapper for sensor specific function calls (all calls that need a specific handle)
     """
@@ -364,17 +369,30 @@ class WFSSensor(object):
         self._handle = handle
         self._dll = dll
 
+    def close(self):
+        """
+        This functions closes the handle
+        """
+        WfsLib(self._dll).close(self._handle)
+
     def get_status(self):
         """
         This function returns the device status of the Wavefront Sensor instrument.
         """
         device_status = ViInt32()
         log.spam(f"querying device status")
-        WFSLib.result(self._dll.WFS_GetStatus(self._handle, byref(device_status)))
+        WfsLib.result(self._dll.WFS_GetStatus(self._handle, byref(device_status)))
         log.info(f"WFS_GetStatus: {device_status.value}")
-        return device_status.value
+        # check all status bits
+        status = {}
+        for key in WFS_STATUS:
+            if WFS_STATUS[key] & device_status.value:
+                status[key] = True
+            else:
+                status[key] = False
+        return status
 
-    def configure(self, cam_resol_index):
+    def set_resolution(self, cam_resol_index):
         """
         This function configures the WFS instrument's camera resolution and returns the max. number of detectable spots in X and Y direction.
         The result depends on the selected microlens array in function WFS_SelectMla().
@@ -382,24 +400,24 @@ class WFSSensor(object):
         self.pixel_format = ViInt32(0)
         self.cam_resol_index = ViInt32(cam_resol_index)
         self.spots = [ViInt32(), ViInt32()]
-        WFSLib.result(self._dll.WFS_ConfigureCam(self._handle, self.pixel_format, self.cam_resol_index, byref(self.spots[0]), byref(self.spots[1])))
+        WfsLib.result(self._dll.WFS_ConfigureCam(self._handle, self.pixel_format, self.cam_resol_index, byref(self.spots[0]), byref(self.spots[1])))
         log.spam(f"sensor configured with {self.spots[0].value} x {self.spots[1].value} spots")
 
-    def mla_count(self):
+    def get_mla_count(self):
         """
         This function returns the number of calibrated Microlens Arrays
         """
         mla_count = ViInt32()
-        WFSLib.result(self._dll.WFS_GetMlaCount(self._handle, byref(mla_count)))
+        WfsLib.result(self._dll.WFS_GetMlaCount(self._handle, byref(mla_count)))
         log.info(f"WFS_GetMlaCount: {mla_count.value} available microlens arrays")
         return mla_count.value
 
-    def mla_info(self):
+    def get_mla_info(self):
         """
         This functions lists all available microlens arrays.
         """
         mlas = []
-        for mla_index in range(self.mla_count()):
+        for mla_index in range(self.get_mla_count()):
             mla_name = ViChar256()
             cam_pitch = ViReal64()
             lenslet_pitch = ViReal64()
@@ -407,18 +425,18 @@ class WFSSensor(object):
             lenslet_f = ViReal64()
             grd_corr_0 = ViReal64()
             grd_corr_45 = ViReal64()
-            WFSLib.result(self._dll.WFS_GetMlaData(self._handle, mla_index, mla_name, byref(cam_pitch), byref(lenslet_pitch), byref(spot_offset[0]), byref(spot_offset[1]), byref(lenslet_f), byref(grd_corr_0), byref(grd_corr_45)))
+            WfsLib.result(self._dll.WFS_GetMlaData(self._handle, mla_index, mla_name, byref(cam_pitch), byref(lenslet_pitch), byref(spot_offset[0]), byref(spot_offset[1]), byref(lenslet_f), byref(grd_corr_0), byref(grd_corr_45)))
             log.info(f"MLA name: {mla_name.value}")
             mlas.append([mla_name.value, cam_pitch.value, lenslet_pitch.value, spot_offset[0].value, spot_offset[1].value, lenslet_f.value, grd_corr_0.value, grd_corr_45])
         return mlas
     
-    def select_mla(self, mla_index=0):
+    def set_mla(self, mla_index=0):
         """
         This function selects one of the removable microlens arrays by its index.
         Appropriate calibration values are read out of the instrument and set active.
         """
         log.spam(f"selecting MLA with index {mla_index}")
-        WFSLib.result(self._dll.WFS_SelectMla(self._handle, mla_index))
+        WfsLib.result(self._dll.WFS_SelectMla(self._handle, mla_index))
 
     def set_reference_plane(self, internal=True):
         """
@@ -429,7 +447,7 @@ class WFSSensor(object):
             log.spam(f"configuring reference plane to internal")
         else:
             log.spam(f"configuring reference plane to external")
-        WFSLib.result(self._dll.WFS_SetReferencePlane(self._handle, self.reference_index))
+        WfsLib.result(self._dll.WFS_SetReferencePlane(self._handle, self.reference_index))
 
     def set_pupil(self, center=[0, 0], diameter=[3, 3]):
         """
@@ -438,7 +456,7 @@ class WFSSensor(object):
         self.pupil_center = [ViReal64(center[0]), ViReal64(center[1])]
         self.pupil_diameter = [ViReal64(diameter[0]), ViReal64(diameter[1])]
         log.spam(f"configuring pupil")
-        WFSLib.result(self._dll.WFS_SetPupil(self._handle, *self.pupil_center, *self.pupil_diameter))
+        WfsLib.result(self._dll.WFS_SetPupil(self._handle, *self.pupil_center, *self.pupil_diameter))
 
     def take_spot_field_image_auto_expos(self):
         """
@@ -448,7 +466,7 @@ class WFSSensor(object):
         self.exposure_time_act = ViReal64()
         self.master_gain_act = ViReal64()
         log.spam(f"taking spot field with auto exposure")
-        WFSLib.result(self._dll.WFS_TakeSpotfieldImageAutoExpos(self._handle, byref(self.exposure_time_act), byref(self.master_gain_act)))
+        WfsLib.result(self._dll.WFS_TakeSpotfieldImageAutoExpos(self._handle, byref(self.exposure_time_act), byref(self.master_gain_act)))
         log.spam(f"exposure_time_act {self.exposure_time_act.value}")
         log.spam(f"master_gain_act {self.master_gain_act.value}")
 
@@ -463,7 +481,7 @@ class WFSSensor(object):
         self.dynamic_noise_cut = ViInt32(dynamic_noise_cut)
         self.calculate_diameters = ViInt32(calculate_diameters)
         log.spam("calculating spot centroids and diameters")
-        WFSLib.result(self._dll.WFS_CalcSpotsCentrDiaIntens(self._handle, self.dynamic_noise_cut, self.calculate_diameters))
+        WfsLib.result(self._dll.WFS_CalcSpotsCentrDiaIntens(self._handle, self.dynamic_noise_cut, self.calculate_diameters))
 
     def calc_deviations(self, cancel_spot_wavefront_tilt=True):
         """
@@ -473,7 +491,7 @@ class WFSSensor(object):
         """
         self.cancel_spot_wavefront_tilt = ViInt32(cancel_spot_wavefront_tilt)
         log.spam("calculating spot deviation from reference")
-        WFSLib.result(self._dll.WFS_CalcSpotToReferenceDeviations(self._handle, self.cancel_spot_wavefront_tilt))
+        WfsLib.result(self._dll.WFS_CalcSpotToReferenceDeviations(self._handle, self.cancel_spot_wavefront_tilt))
 
     def calc_wavefront(self, wavefront_type=0, limit_to_pupil=True):
         """
@@ -485,7 +503,7 @@ class WFSSensor(object):
         array_wavefront = np.zeros(MAX_SPOTS[::-1], dtype = np.float32)
         log.spam(f"calculating wavefront type {self.wavefront_type.value}")
         # WFSLib.result(self._dll.WFS_CalcWavefront(self._handle, self.wavefront_type, self.limit_to_pupil, array_wavefront.ctypes.data))
-        WFSLib.result(self._dll.WFS_CalcWavefront(self._handle, self.wavefront_type, self.limit_to_pupil, array_wavefront))
+        WfsLib.result(self._dll.WFS_CalcWavefront(self._handle, self.wavefront_type, self.limit_to_pupil, array_wavefront))
         return np.transpose(array_wavefront[:self.spots[1].value, :self.spots[0].value].copy())
 
 
@@ -496,34 +514,35 @@ if __name__ == "__main__":
     import ctypes as ct
     import sys
     dll = ct.windll.WFS_32
-
     # list devices
-    lib = WFSLib(dll)
+    lib = WfsLib(dll)
     print(lib.device_info())
     # get handle
-    sensor = lib.open(list_index=0)
+    sdk = lib.open(list_index=0)
     #list and selec MLA
-    sensor.mla_info()
-    sensor.select_mla(mla_index=0)
+    sdk.get_mla_info()
+    sdk.set_mla(mla_index=0)
     # configuration
-    sensor.configure(cam_resol_index=2) # 1024**2 for WFS30
-    sensor.set_reference_plane(internal=True)
-    sensor.set_pupil(center=[0, 0], diameter=[3,3])
+    sdk.set_resolution(cam_resol_index=2) # 1024**2 for WFS30
+    sdk.set_reference_plane(internal=True)
+    sdk.set_pupil(center=[0, 0], diameter=[3,3])
     # actual image and wavefront calculation
     # do it at most 3 times
-    for i in range(5):
-        sensor.take_spot_field_image_auto_expos()
-        status = sensor.get_status()
+    for i in range(3):
+        sdk.take_spot_field_image_auto_expos()
+        status = sdk.get_status()
         # check if parameters are right
-        # print(status & WFS_STATUS["PTH"])
-    sensor.calc_spot()
-    sensor.calc_deviations()
+        print(status)
+        if (not status["PTH"]) and (not status["PTL"]) and (not status["HAL"]):
+            break
+    sdk.calc_spot()
+    sdk.calc_deviations()
     try:
-        result = sensor.calc_wavefront(limit_to_pupil=True)
+        result = sdk.calc_wavefront(limit_to_pupil=True)
         plt.imshow(result)
         plt.colorbar()
         plt.show()
     except Exception as e:
         log.critical(f"{e}")
     finally:
-        WFSLib(dll).close(sensor._handle)
+        sdk.close()
