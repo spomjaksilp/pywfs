@@ -12,7 +12,7 @@ except:
     from sdk import WfsLib, WfsSDK, WfsError
 
 
-class WFSCamera(object):
+class WfsCamera(object):
     """
     This class represents a higher level pythonic way of interaction with the WFS
     """
@@ -61,6 +61,22 @@ class WFSCamera(object):
             if hasattr(self._sdk, f"set_{feature}"):
                 self.set_feature(feature, self.configuration[feature])
 
+    def auto_exposure(self, max_tries=10):
+        """
+        This function calls take_spot_field_image_auto_expos() over and over until errors are cleared
+        """
+         # check if the device has been already initiated
+        if self.configuration is None:
+            self.configure()
+        for c in range(max_tries):
+            self._sdk.take_spot_field_image_auto_expos()
+            status = self._sdk.get_status()
+            # check if parameters are right
+            if (not status["PTH"]) and (not status["PTL"]) and (not status["HAL"]):
+                log.spam(f"adjusting exposure took {c + 1} runs")
+                return
+        raise WfsError("auto adjusting parameters not successful")
+
     def acquire_wavefront(self, limit_to_pupil=True):
         """
         This function gets one wavefront from the sensor
@@ -90,7 +106,7 @@ if __name__ == "__main__":
     lib = WfsLib(dll)
     # get handle
     sdk = lib.open(list_index=0)
-    camera = WFSCamera(sdk)
+    camera = WfsCamera(sdk)
     conf = {
         "mla": {"mla_index": 0},
         "resolution": {"cam_resol_index": 2},
@@ -99,6 +115,7 @@ if __name__ == "__main__":
         }
     try:
         camera.configure(conf)
+        camera.auto_exposure()
         result = camera.acquire_wavefront()
         plt.imshow(result)
         plt.colorbar()
